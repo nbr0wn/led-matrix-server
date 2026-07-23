@@ -4,7 +4,7 @@
 #   On a Pi (uname -m = aarch64):     make   -> native build
 #   On any other host (e.g. x86_64):  make   -> auto cross-compile to aarch64
 # There is deliberately no way to produce an x86 binary; a non-aarch64 `make`
-# transparently routes through the cross path below (same as ./build-pi.sh).
+# transparently routes through the cross path below.
 #
 # `make cross` downloads the ARM-official aarch64 toolchain into toolchain/
 # on first use (no apt packages needed), then re-invokes make with CROSS=
@@ -205,5 +205,35 @@ clean:
 distclean: clean
 	if [ -d $(RGB_LIBDIR) ]; then $(MAKE) -C $(RGB_LIBDIR) clean; fi
 
+# --- Deploy to the Pi (override target with PI_HOST / PI_USER / PI_KEY / PI_DEST) --
+PI_USER ?= root
+PI_HOST ?= 172.16.16.168
+PI_KEY  ?= $(HOME)/.ssh/id_ed25519
+PI_DEST ?= led-matrix-server
+SSH := ssh -i $(PI_KEY) -o ConnectTimeout=10
+SCP := scp -i $(PI_KEY) -o ConnectTimeout=10
+PI := $(PI_USER)@$(PI_HOST)
+
+# Copy the (cross-built) binary, config and fonts to the Pi. Upload the
+# executables to a temp name then atomically mv over, so a running service
+# (which holds the old inode) doesn't fail with "text file busy".
+deploy:
+	@test -x $(BINARY) || { echo "error: $(BINARY) not built -- run 'make cross' first." >&2; exit 1; }
+	$(SSH) $(PI) "mkdir -p ~/$(PI_DEST)/fonts"
+	$(SCP) $(BINARY) $(PI):~/$(PI_DEST)/$(BINARY).new
+	$(SSH) $(PI) "chmod +x ~/$(PI_DEST)/$(BINARY).new && mv -f ~/$(PI_DEST)/$(BINARY).new ~/$(PI_DEST)/$(BINARY)"
+	$(SCP) led-matrix-server.conf $(PI):~/$(PI_DEST)/
+	@if [ -x $(CALBIN) ]; then \
+	  $(SCP) $(CALBIN) $(PI):~/$(PI_DEST)/$(CALBIN).new; \
+	  $(SSH) $(PI) "chmod +x ~/$(PI_DEST)/$(CALBIN).new && mv -f ~/$(PI_DEST)/$(CALBIN).new ~/$(PI_DEST)/$(CALBIN)"; \
+	fi
+	$(SCP) rpi-rgb-led-matrix/fonts/6x10.bdf rpi-rgb-led-matrix/fonts/5x7.bdf $(PI):~/$(PI_DEST)/fonts/
+	@echo ">> Deployed. Restart: $(SSH) $(PI) systemctl restart led-matrix-server"
+
+# Install/enable the systemd unit (run 'make deploy' first).
+install-service:
+	$(SCP) led-matrix-server.service $(PI):/etc/systemd/system/led-matrix-server.service
+	$(SSH) $(PI) "systemctl daemon-reload && systemctl enable --now led-matrix-server.service"
+
 FORCE:
-.PHONY: FORCE all cross clean distclean
+.PHONY: FORCE all cross clean distclean deploy install-service

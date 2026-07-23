@@ -16,7 +16,7 @@
 // --- 36: MAME arcade launcher ---------------------------------------------
 // A controller-driven front end: a scrollable list of arcade games rendered on
 // the matrix and navigated with the gamepad. Selecting one launches MAME inside
-// a panel-sized virtual X screen (via mame-run.sh) and blits its framebuffer;
+// a panel-sized virtual X screen and blits its framebuffer;
 // Back+Start on the pad quits back to the menu. The pad is read via Linux evdev.
 class MameMode : public Mode {
 public:
@@ -134,9 +134,23 @@ private:
     }
   }
 
+  // The launcher (once mame-run.sh) is inlined so there is no shell script to
+  // deploy: boot a panel-sized virtual X screen with its framebuffer in
+  // /tmp/mmfb (which we mmap), then run MAME in it. $1=rom $2=width $3=height.
+  static const char *RunScript() {
+    return R"SH(
+ROM="$1"; W="${2:-192}"; H="${3:-128}"; FBDIR=/tmp/mmfb
+pkill -f "Xvfb :99" 2>/dev/null; rm -f /tmp/.X99-lock
+rm -rf "$FBDIR"; mkdir -p "$FBDIR"
+Xvfb :99 -screen 0 "${W}x${H}x24" -fbdir "$FBDIR" >/tmp/mm-xvfb.log 2>&1 &
+XPID=$!; trap 'kill $XPID 2>/dev/null' EXIT
+sleep 1.5
+export DISPLAY=:99
+/usr/games/mame "$ROM" -rompath "$HOME/mame-roms" \
+  -video soft -sound none -skip_gameinfo -nomouse -keepaspect >/tmp/mm-mame.log 2>&1
+)SH";
+  }
   void LaunchGame(const char *rom) {
-    const std::string home = getenv("HOME") ? getenv("HOME") : "/root";
-    const std::string script = home + "/led-matrix-server/mame-run.sh";
     char ws[8], hs[8];
     snprintf(ws, sizeof ws, "%d", width_); snprintf(hs, sizeof hs, "%d", height_);
     child_ = fork();
@@ -144,7 +158,7 @@ private:
       setsid();                              // own process group, killable wholesale
       const int nul = open("/dev/null", O_RDWR);
       if (nul >= 0) { dup2(nul,0); dup2(nul,1); dup2(nul,2); }
-      execl("/bin/bash", "bash", script.c_str(), rom, ws, hs, (char*)NULL);
+      execl("/bin/sh", "sh", "-c", RunScript(), "mame", rom, ws, hs, (char*)NULL);
       _exit(127);
     }
     playing_ = (child_ > 0);

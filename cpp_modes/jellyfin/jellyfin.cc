@@ -148,8 +148,9 @@ private:
     rgb_matrix::DrawText(c, font_, x, baselineY, col, s.c_str());
   }
   // Server + API key come from the environment (JELLYFIN_HOST like "host:8096",
-  // JELLYFIN_API_KEY), so no credentials live in the source. run.sh exports them
-  // from an untracked led-matrix-server.conf; unset means the mode shows a config hint.
+  // JELLYFIN_API_KEY), so no credentials live in the source. The app loads them
+  // from the untracked led-matrix-server.conf into the environment at startup;
+  // unset means the mode shows a config hint.
   static std::string Host() { const char *h = getenv("JELLYFIN_HOST");    return h ? h : ""; }
   static std::string Key()  { const char *k = getenv("JELLYFIN_API_KEY"); return k ? k : ""; }
   static std::string UrlEncode(const std::string &s) {

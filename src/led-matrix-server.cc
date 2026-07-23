@@ -6,8 +6,8 @@
 // Modeled after the programs in ../examples-api-use/. Rendering uses an
 // off-screen FrameCanvas with SwapOnVSync() for smooth double buffering.
 //
-// Panel geometry / GPIO options come from the usual --led-* flags, and the
-// web-server port comes from -w (set in led-matrix-server.conf; see run.sh).
+// Panel geometry, GPIO options, web-server port, and everything else are read
+// from led-matrix-server.conf (next to the binary); there are no CLI arguments.
 //
 // This code is public domain
 // (but note that the led-matrix library this depends on is GPL v2).
@@ -1100,18 +1100,47 @@ static void WebServerThread(int port) {
 }
 
 // --------------------------------------------------------------------------
-static void usage(const char *progname) {
-  fprintf(stderr, "usage: %s [options]\n", progname);
-  fprintf(stderr, "Multi-mode LED matrix animation with an HTTP control server.\n\n");
-  fprintf(stderr, "Options:\n");
-  fprintf(stderr, "\t-m <mode>  : Start in mode number (1-based, default: 1)\n");
-  fprintf(stderr, "\t-s <speed> : Animation speed multiplier (default: 1.0)\n");
-  fprintf(stderr, "\t-f <fps>   : Target frames per second (default: 60)\n");
-  fprintf(stderr, "\t-w <port>  : HTTP control-server port (default: 8080)\n");
-  fprintf(stderr, "\t-A <u:p>   : require HTTP basic auth user:password (default: none)\n");
-  fprintf(stderr, "\t-c <cert>  : PEM certificate to serve HTTPS (needs -k; built with TLS=1)\n");
-  fprintf(stderr, "\t-k <key>   : PEM private key for -c\n\n");
-  fprintf(stderr, "Plus all the standard --led-* matrix flags.\n");
+// --------------------------------------------------------------------------
+// Configuration. There are no command-line arguments: everything is read from
+// led-matrix-server.conf (KEY=VALUE lines) sitting next to the binary.
+// --------------------------------------------------------------------------
+static std::string ExeDir() {
+  char buf[4096];
+  const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
+  if (n <= 0) return ".";
+  buf[n] = 0;
+  std::string p(buf);
+  const size_t s = p.find_last_of('/');
+  return s == std::string::npos ? "." : p.substr(0, s);
+}
+static std::map<std::string, std::string> ReadConf(const std::string &path) {
+  std::map<std::string, std::string> m;
+  FILE *f = fopen(path.c_str(), "r");
+  if (!f) return m;
+  char line[512];
+  while (fgets(line, sizeof line, f)) {
+    char *p = line;
+    while (*p == ' ' || *p == '\t') ++p;
+    if (*p == '#' || *p == '\n' || *p == '\r' || *p == 0) continue;
+    char *eq = strchr(p, '=');
+    if (!eq) continue;
+    *eq = 0;
+    std::string key(p), val(eq + 1);
+    while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+    while (!val.empty() && (val.back() == '\n' || val.back() == '\r' || val.back() == ' ')) val.pop_back();
+    if (val.size() >= 2 && val.front() == '"' && val.back() == '"') val = val.substr(1, val.size() - 2);
+    m[key] = val;
+  }
+  fclose(f);
+  return m;
+}
+static int ConfInt(const std::map<std::string, std::string> &m, const char *k, int def) {
+  auto it = m.find(k);
+  return it == m.end() ? def : atoi(it->second.c_str());
+}
+static std::string ConfStr(const std::map<std::string, std::string> &m, const char *k) {
+  auto it = m.find(k);
+  return it == m.end() ? std::string() : it->second;
 }
 
 // --------------------------------------------------------------------------
@@ -1181,52 +1210,44 @@ private:
   std::vector<int> gr_, gg_, gb_;
 };
 
-int main(int argc, char *argv[]) {
+int main() {
   RGBMatrix::Options matrix_options;
   rgb_matrix::RuntimeOptions runtime_opt;
-  matrix_options.rows = 64;
-  matrix_options.cols = 64;
-  matrix_options.chain_length = 3;
-  matrix_options.parallel = 2;
   matrix_options.hardware_mapping = "regular";
 
   // We ship a statically-linked binary (so it runs across Pi glibc versions),
-  // and NSS lookups like getpwnam("daemon") are unreliable when static. Default
-  // to NOT dropping privileges; the user can still re-enable with
-  // --led-drop-privs if their environment supports it.
+  // and NSS lookups like getpwnam("daemon") are unreliable when static, so we
+  // never drop privileges.
   runtime_opt.drop_privileges = 0;
 
-  if (!rgb_matrix::ParseOptionsFromFlags(&argc, &argv,
-                                         &matrix_options, &runtime_opt)) {
-    usage(argv[0]);
-    return 1;
-  }
+  // Everything is configured from led-matrix-server.conf next to the binary --
+  // there are no command-line arguments.
+  const std::map<std::string, std::string> conf = ReadConf(ExeDir() + "/led-matrix-server.conf");
+  // Mirror every entry into the environment as well, so modes that read secrets
+  // via getenv (e.g. Jellyfin's host/key) pick them up.
+  for (std::map<std::string, std::string>::const_iterator it = conf.begin(); it != conf.end(); ++it)
+    setenv(it->first.c_str(), it->second.c_str(), 1);
 
-  int start_mode = 1;
-  float speed = 1.0f;
-  int fps = 60;
-  int opt;
-  while ((opt = getopt(argc, argv, "m:s:f:w:A:c:k:h")) != -1) {
-    switch (opt) {
-    case 'm': start_mode = atoi(optarg); break;
-    case 'A': g_web_auth = optarg; break;
-    case 'c': g_tls_cert = optarg; break;
-    case 'k': g_tls_key = optarg; break;
-    case 's': speed = atof(optarg); break;
-    case 'f': fps = atoi(optarg); break;
-    case 'w': g_web_port = atoi(optarg); break;
-    case 'h':
-    default: usage(argv[0]); return 1;
-    }
-  }
+  matrix_options.rows         = ConfInt(conf, "LED_ROWS", 64);
+  matrix_options.cols         = ConfInt(conf, "LED_COLS", 64);
+  matrix_options.chain_length = ConfInt(conf, "LED_CHAIN", 3);
+  matrix_options.parallel     = ConfInt(conf, "LED_PARALLEL", 2);
+  runtime_opt.gpio_slowdown   = ConfInt(conf, "LED_SLOWDOWN_GPIO", 3);
+
+  g_web_port  = ConfInt(conf, "WEB_PORT", 8080);
+  g_web_auth  = ConfStr(conf, "WEB_AUTH");
+  g_tls_cert  = ConfStr(conf, "TLS_CERT");
+  g_tls_key   = ConfStr(conf, "TLS_KEY");
+
+  int start_mode = ConfInt(conf, "START_MODE", 1);
+  int fps        = ConfInt(conf, "FPS", 60);
   if (fps <= 0) fps = 60;
-  // Basic-auth credentials may also come from the environment, which keeps the
-  // password out of `ps` (unlike -A). The flag wins if both are set.
-  if (g_web_auth.empty()) { const char *e = getenv("MATRIX_WEB_AUTH"); if (e) g_web_auth = e; }
+  float speed = 1.0f;
+  { const std::string s = ConfStr(conf, "SPEED"); if (!s.empty()) speed = atof(s.c_str()); }
 
-  // HTTPS: a cert AND key must both be given. Default (neither) is plain HTTP.
+  // HTTPS: a cert AND key must both be set. Default (neither) is plain HTTP.
   if (g_tls_cert.empty() != g_tls_key.empty()) {
-    fprintf(stderr, "error: -c and -k must be given together (cert + key).\n");
+    fprintf(stderr, "error: TLS_CERT and TLS_KEY must be set together (cert + key).\n");
     return 1;
   }
   if (!g_tls_cert.empty()) {
@@ -1245,14 +1266,14 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 #else
-    fprintf(stderr, "error: -c/-k given but this binary was built without TLS.\n"
+    fprintf(stderr, "error: TLS_CERT/TLS_KEY set but this binary was built without TLS.\n"
                     "       Rebuild with `make TLS=1` for HTTPS support.\n");
     return 1;
 #endif
   }
 
   RGBMatrix *matrix = RGBMatrix::CreateFromOptions(matrix_options, runtime_opt);
-  if (matrix == NULL) { usage(argv[0]); return 1; }
+  if (matrix == NULL) { fprintf(stderr, "error: could not initialize the LED matrix.\n"); return 1; }
 
   signal(SIGTERM, InterruptHandler);
   signal(SIGINT, InterruptHandler);

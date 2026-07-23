@@ -129,9 +129,9 @@ catalog is the separate repo
 
 ## Configuration (`led-matrix-server.conf`)
 
-`run.sh` sources this file and builds the command line from separate variables.
-Copy `led-matrix-server.conf.example` to `led-matrix-server.conf` (gitignored)
-and edit:
+The binary reads this file directly (from next to it) and takes **no
+command-line arguments** — everything is configured here. Copy
+`led-matrix-server.conf.example` to `led-matrix-server.conf` (gitignored) and edit:
 
 ```
 LED_ROWS=64
@@ -141,29 +141,32 @@ LED_CHAIN=3
 LED_SLOWDOWN_GPIO=3
 ```
 
-Optional: `WEB_PORT`, `WEB_AUTH`, `TLS_CERT`/`TLS_KEY`, `VIDEO_WIDTH`/
-`VIDEO_HEIGHT` (source resolution for the video modes), and secrets such as
-`JELLYFIN_HOST`/`JELLYFIN_API_KEY`.
+Optional: `WEB_PORT`, `WEB_AUTH`, `TLS_CERT`/`TLS_KEY`, `START_MODE`, `FPS`,
+`SPEED`, and secrets such as `JELLYFIN_HOST`/`JELLYFIN_API_KEY`.
 
 ## Build & install
 
+Everything is `make` targets — there are no wrapper scripts:
+
 ```sh
-./build-pi.sh          # cross-compile for 64-bit Pi OS (downloads the aarch64 toolchain on first use)
-./deploy.sh            # copy binary + run.sh + config to the Pi
-./install-service.sh   # optional: install + enable the systemd service
+make cross             # cross-compile for 64-bit Pi OS (downloads the aarch64 toolchain on first use)
+make deploy            # copy binary + config + fonts to the Pi
+make install-service   # optional: install + enable the systemd service
 ```
 
-`deploy.sh` targets `root@172.16.16.168` with `~/.ssh/id_ed25519` by default;
-override with `PI_HOST` / `PI_USER` / `PI_KEY` / `PI_DEST`. Cross builds link
-statically (`-static`) so the binary runs regardless of the Pi's glibc; add
-`make TLS=1` for HTTPS. Running `make` on the Pi itself gives a native build.
+`make deploy` / `install-service` target `root@172.16.16.168` with
+`~/.ssh/id_ed25519` by default; override with `PI_HOST` / `PI_USER` / `PI_KEY` /
+`PI_DEST`. Cross builds link statically (`-static`) so the binary runs regardless
+of the Pi's glibc; add `TLS=1` for HTTPS. Running `make` on the Pi itself gives a
+native build.
 
-On the Pi:
+On the Pi the binary needs root (GPIO); the service runs it directly. To run it
+by hand:
 
 ```sh
-~/led-matrix-server/run.sh              # or -m <mode> / -s <speed> / -f <fps>
-systemctl restart led-matrix-server     # if installed as a service
-journalctl -u led-matrix-server -f      # follow the log
+sudo ~/led-matrix-server/led-matrix-server   # reads led-matrix-server.conf beside it
+systemctl restart led-matrix-server          # if installed as a service
+journalctl -u led-matrix-server -f           # follow the log
 ```
 
 ## Files & adding a mode
@@ -175,7 +178,8 @@ journalctl -u led-matrix-server -f      # follow the log
 | `cpp_modes/<name>/<name>.cc` | One C++ display mode per translation unit. |
 | `cpp_modes/lua/lua-engine.h` | Sandboxed Lua engine (Lua Script mode + fetched modules). |
 | `src/modules/` | Fetched-module catalog: fetch, parse, install/remove. |
-| `led-matrix-server.conf`, `run.sh`, `build-pi.sh`, `deploy.sh` | Config + scripts. |
+| `led-matrix-server.conf` | All runtime settings (the binary reads it; no CLI args). |
+| `Makefile` | Build (`make cross`) and Pi deployment (`make deploy`, `make install-service`). |
 
 To add a C++ mode, create `cpp_modes/<name>/<name>.cc` with a `Mode` subclass and
 end it with `REGISTER_MODE(<0-based order>, MyMode);`. The Makefile globs

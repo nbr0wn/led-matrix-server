@@ -6,11 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Deployed by deploy.sh to /root/led-matrix-server. run.sh sources led-matrix-server.conf
-# (LED flags + control port) and execs the binary; cwd is set so the stock
-# ticker finds fonts/ via a relative path.
+# The binary reads all settings from led-matrix-server.conf next to it and takes
+# no arguments. cwd is set so modes find fonts/ (and the conf) via relative paths.
 WorkingDirectory=/root/led-matrix-server
-ExecStart=/root/led-matrix-server/run.sh
+ExecStart=/root/led-matrix-server/led-matrix-server
 # GPIO/DMA needs root; the app keeps root (privilege dropping is disabled for
 # the static binary) and asks for slightly elevated scheduling for a steady
 # refresh rate.

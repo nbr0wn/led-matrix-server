@@ -1,7 +1,8 @@
 # led-matrix-server runtime configuration.
 #
 # THIS IS A TEMPLATE. Copy it to led-matrix-server.conf (gitignored) and edit.
-# run.sh sources this file and forwards these settings on the command line.
+# The binary reads this file directly (next to it); there are no command-line
+# arguments -- everything is set here.
 
 # --- Panel geometry ---
 # One 64x64 panel tile; 4 wide (chain) x 2 tall (parallel) => a 256x128 canvas.
@@ -23,6 +24,14 @@ WEB_PORT=8080
 # (needs a TLS-enabled binary: build with `make TLS=1`). Unset = plain HTTP.
 # TLS_CERT=/root/led-matrix-server/cert.pem
 # TLS_KEY=/root/led-matrix-server/key.pem
+
+# --- Startup (optional) ---
+# START_MODE  : mode number to start in (1-based; default 1)
+# FPS         : target frames per second (default 60)
+# SPEED       : animation speed multiplier (default 1.0)
+# START_MODE=1
+# FPS=60
+# SPEED=1.0
 
 
 # --- Panel calibration tool ---
