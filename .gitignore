@@ -1,0 +1,22 @@
+# --- Fetched / vendored dependencies (rebuilt on demand by the Makefile) ---
+rpi-rgb-led-matrix/
+toolchain/
+openssl/
+
+# --- Build artifacts ---
+*.o
+*.d
+led-matrix-server
+panel-cal
+
+# --- Secrets (never commit) ---
+led-matrix-server.conf
+!led-matrix-server.conf.example
+# TLS cert/key if kept in-tree
+*.pem
+
+# --- Runtime / local state ---
+panels.cal
+mame-roms/
+*.zip
+*.chd

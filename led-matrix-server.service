@@ -1,0 +1,25 @@
+[Unit]
+Description=led-matrix-server (HTTP control server + auto-cycler)
+# The stock ticker mode needs the network to fetch quotes.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Deployed by deploy.sh to /root/led-matrix-server. run.sh sources led-matrix-server.conf
+# (LED flags + control port) and execs the binary; cwd is set so the stock
+# ticker finds fonts/ via a relative path.
+WorkingDirectory=/root/led-matrix-server
+ExecStart=/root/led-matrix-server/run.sh
+# GPIO/DMA needs root; the app keeps root (privilege dropping is disabled for
+# the static binary) and asks for slightly elevated scheduling for a steady
+# refresh rate.
+User=root
+Nice=-10
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

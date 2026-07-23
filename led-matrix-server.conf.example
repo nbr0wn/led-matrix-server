@@ -1,0 +1,38 @@
+# led-matrix-server runtime configuration.
+#
+# THIS IS A TEMPLATE. Copy it to led-matrix-server.conf (gitignored) and edit.
+# run.sh sources this file and forwards these settings on the command line.
+
+# --- Panel geometry ---
+# One 64x64 panel tile; 4 wide (chain) x 2 tall (parallel) => a 256x128 canvas.
+LED_ROWS=64
+LED_COLS=64
+LED_PARALLEL=2
+LED_CHAIN=4
+LED_SLOWDOWN_GPIO=3
+
+# --- HTTP control server ---
+# Open http://<pi-ip>:8080/ in a browser for the mode menu + Lua textbox.
+# The same port serves a JSON API: GET /api for state, POST /api {"mode":N}
+# to switch (N 1-based; N=0 cycles), and POST /api/lua with a raw Lua script
+# body to run it. This replaced the old telnet + Lua-upload TCP ports.
+WEB_PORT=8080
+# Optional HTTP basic auth for the whole web server. Empty/unset = no auth.
+# WEB_AUTH=user:password
+# Optional HTTPS. Set both to PEM paths to serve https:// instead of http://
+# (needs a TLS-enabled binary: build with `make TLS=1`). Unset = plain HTTP.
+# TLS_CERT=/root/led-matrix-server/cert.pem
+# TLS_KEY=/root/led-matrix-server/key.pem
+
+
+# --- Panel calibration tool ---
+# run-cal.sh runs panel-cal at this brightness (%). Full-white on all panels at
+# full brightness can overdraw the PSU and brown out the Pi, so keep this low.
+# ~20 is verified safe here; raise cautiously only if your supply has headroom.
+CAL_BRIGHTNESS=20
+
+# --- Jellyfin mode ---
+# Your Jellyfin server (host:port) and an API key (Dashboard -> API Keys).
+# Read from the environment by the app; kept here (not in the binary or repo).
+JELLYFIN_HOST=your-jellyfin-host:8096
+JELLYFIN_API_KEY=your-api-key
